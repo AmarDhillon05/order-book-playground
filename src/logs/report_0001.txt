@@ -1,0 +1,127 @@
+==============================================================================
+ order book engine - run report
+==============================================================================
+ started    2026-08-14 13:39:04
+ host       amar-dhillon-IdeaPad-Pro-5-16IMH9
+ command    ./bookbench ../data/20241223/20241223_IEXTP1_DPLS1.0.pcap --events=2000000 --reps=2 --latency --drift --drift-sample=500000 --report
+
+--- 1. application -----------------------------------------------------------
+
+  capture                       ../data/20241223/20241223_IEXTP1_DPLS1.0.pcap
+  events replayed               2000000
+  baseline for comparison       naive
+
+  timing
+    decode the capture               554.80 ms
+    benchmark replays                  1.796 s
+    drift replay                     434.61 ms
+    whole program                      3.861 s
+    end to end throughput               517944 events/sec
+
+  resources
+    peak RSS                           723.1 M
+    read from device                   273.8 M
+    requested via syscalls             273.3 M
+    written to device                      0 B
+    read amplification                    1.00x
+
+  accuracy against the feed
+    conservation of shares               HOLDS
+      submitted                      446388347
+      traded+cancelled+resting       446388347
+
+    fills graded, free running            6695
+      exact                               6695  100.00%
+      wrong orders                           0
+      wrong sizes                            0
+      book too thin                          0
+    shares placed right                 852023  100.00%
+
+    adds that crossed                        0
+    modifies that crossed                    0
+    top of book, price                  100.00%
+    top of book, price+size             100.00%
+
+--- 2. log database ----------------------------------------------------------
+
+  No log database registered on this run.
+
+  The substrate is in place - store/{record,batch,pager,file_index} and
+  the contract in logdb/logdb.h - but no backend implements it yet, so
+  there is nothing to measure. The five historical queries in
+  books/book.h are still answered by replaying a retained in-memory log,
+  which is the retention cost this layer exists to remove.
+
+--- 3. order book ------------------------------------------------------------
+
+  throughput
+  book             events      best ms   ns/event   events/sec  vs naive         checksum
+  --------   ------------ ------------ ---------- ------------ --------- ----------------
+  null            2000000       10.712        5.4    186699735     0.03x    2000001000000
+  naive           2000000      340.424      170.2      5875029     1.00x       -160810524
+  exchange        2000000      479.808      239.9      4168331     1.41x       -105738789
+
+  memory and scheduling
+  book           book RSS     peak RSS    b/event    symbols  cpu util  invol cs
+  --------   ------------ ------------ ---------- ---------- --------- ---------
+  null                0 B      250.0 M        0.0          0    100.0%         0
+  naive           249.7 M      542.5 M      130.9       6598    100.0%         3
+  exchange        396.7 M      723.1 M      208.0       6598    100.0%         8
+
+  null - latency by message kind, ns per apply()
+  kind             count      p50      p90      p99    p99.9      max       mean
+  add             917077        8        8        9        9     2414        8.1
+  delete          892053        8        8        9        9     2609        8.1
+  modify           91320        8        8        9        9      126        8.0
+  execute           8095        8        8        9        9       16        8.0
+  other            91455        8        8        9       14      154        8.0
+  ALL            2000000        8        8        9        9     2609        8.1
+
+  naive - latency by message kind, ns per apply()
+  kind             count      p50      p90      p99    p99.9      max       mean
+  add             917077      108      176     1088     2176 42027240      217.5
+  delete          892053       92      160     1024     2176  9703013      152.5
+  modify           91320      112      200     1088     2176     6428      153.0
+  execute           8095      100      192     1088     1472     2487      137.0
+  other            91455       12       22      864     1280   626733       41.4
+  ALL            2000000      100      168     1024     2176 42027240      177.1
+
+  exchange - latency by message kind, ns per apply()
+  kind             count      p50      p90      p99    p99.9      max       mean
+  add             917077      136      288     1216     2304 66850311      318.5
+  delete          892053      108      216     1152     2304 17159630      203.9
+  modify           91320      216      400     1280     2432    83446      269.0
+  execute           8095       26       38     1088     2176     2956       77.4
+  other            91455       23       36      960     1536   708867       65.6
+  ALL            2000000      120      256     1152     2304 66850311      252.6
+
+  operation counters not exposed by any book on this run.
+
+  These are the figures that do not move between machines - level
+  probes, order hops, comparisons, id lookups, and for the heap the
+  tombstones a query had to step over. They are counted by the book
+  itself, so they arrive with the segment tree and heap backends.
+
+--- 4. hardware --------------------------------------------------------------
+
+  machine state
+    cpu                         Intel(R) Core(TM) Ultra 7 155H
+    ran on cpu                  2 (P-core)
+    governor                    powersave
+    turbo                       ENABLED (frequency will vary)
+
+  counters not collected on this run
+    reason                    perf_event_paranoid is 4; counters need <= 2. Fix with: sudo sysctl -w kernel.perf_event_paranoid=1
+
+  Collect them with:
+
+    taskset -c 2 perf stat -r 5 -M TopdownL1 -e cycles,instructions,cache-references,cache-misses,branch-misses,dTLB-load-misses \
+    ./bookbench ../data/20241223/20241223_IEXTP1_DPLS1.0.pcap --events=2000000
+
+  IPC is the headline: this core can retire ~6 instructions per cycle,
+  and a pointer chasing structure will land near 1. The top down
+  breakdown then says where the other five slots went - Retiring is the
+  only bucket that did useful work, and Memory Bound is the one this
+  study predicts will dominate.
+
+==============================================================================

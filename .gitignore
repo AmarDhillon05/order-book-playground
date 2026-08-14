@@ -1,0 +1,6 @@
+resources/
+data/
+*.pcap
+*.pcap.gz
+*.part
+__pycache__/
