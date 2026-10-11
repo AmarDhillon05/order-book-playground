@@ -1,0 +1,30 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        mode: [release, sanitize]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install libpcap
+        run: sudo apt-get update && sudo apt-get install -y libpcap-dev
+
+      - name: Build and test (release)
+        if: matrix.mode == 'release'
+        working-directory: src
+        run: make -j"$(nproc)" all test CXXFLAGS="-std=c++17 -O2 -Wall -Wextra -Werror -I."
+
+      - name: Build and test (ASan + UBSan)
+        if: matrix.mode == 'sanitize'
+        working-directory: src
+        run: |
+          make -j"$(nproc)" all test \
+            CXXFLAGS="-std=c++17 -O1 -g -Wall -Wextra -Werror -fsanitize=address,undefined -fno-omit-frame-pointer -I." \
+            LDLIBS="-lpcap -fsanitize=address,undefined"

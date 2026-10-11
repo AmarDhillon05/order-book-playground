@@ -21,6 +21,8 @@ OBJS := loader/dpls_dump.o loader/dpls_reader.o make_gap_fixture.o \
         bench/metrics.o bench/report.o \
         $(BOOK_OBJS) $(MATCH_OBJS) $(STORE_OBJS)
 
+TEST_BINS := tests/test_books
+
 all: $(BINS)
 
 dpls_dump: loader/dpls_dump.o loader/dpls_reader.o
@@ -41,6 +43,16 @@ bookbench: bench/bench.o bench/events.o bench/drift.o bench/resources.o \
 matchcheck: $(MATCH_OBJS) bench/events.o bench/resources.o loader/dpls_reader.o \
             $(BOOK_OBJS)
 	$(CXX) $(CXXFLAGS) -o $@ $^ $(LDLIBS)
+
+#Book rules on hand-built events, so a fresh clone can check the books without a capture
+tests/test_books: tests/test_books.o $(BOOK_OBJS) loader/dpls_reader.o match/taker.o match/matcher.o
+	$(CXX) $(CXXFLAGS) -o $@ $^ $(LDLIBS)
+
+tests/%.o: tests/%.cpp books/book.h books/naive_book.h books/exchange_book.h loader/dpls_reader.h
+	$(CXX) $(CXXFLAGS) -c -o $@ $<
+
+test: $(TEST_BINS)
+	./tests/test_books
 
 loader/%.o: loader/%.cpp loader/dpls_reader.h
 	$(CXX) $(CXXFLAGS) -c -o $@ $<
@@ -68,6 +80,6 @@ logdb/%.o: logdb/%.cpp logdb/logdb.h store/record.h store/batch.h store/pager.h
 	$(CXX) $(CXXFLAGS) -c -o $@ $<
 
 clean:
-	rm -f $(BINS) $(OBJS)
+	rm -f $(BINS) $(OBJS) $(TEST_BINS) tests/*.o
 
-.PHONY: all clean
+.PHONY: all clean test
