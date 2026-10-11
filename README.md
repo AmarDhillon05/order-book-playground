@@ -409,7 +409,3 @@ data/          downloaded captures (gitignored)
 `src/books/book.h` is the place to start reading. It is the twelve-method contract, written
 out as declarations with the reasoning for each, and it is checked against every book at
 compile time — a book missing a method fails the build naming the method.
-
-## License
-
-Not yet specified.
