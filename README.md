@@ -1,5 +1,9 @@
 # Order book engine over real IEX market data
 
+> - A matching engine running free, with no resync, agreed with IEX on **99,122 of 99,123 fills over 51 million messages**. The single divergence never moved a top-of-book price.
+> - The `std::map` mirror book costs **100 ns p50 / 1.0 µs p99 / 2.2 µs p99.9** per message (≈170 ns/event mean, pinned P-core).
+> - Share conservation holds over 7.0 billion shares. Book rules are unit-tested in CI under ASan/UBSan.
+
 A limit order book built from a real exchange feed, in two modes that answer different
 questions.
 
@@ -43,6 +47,7 @@ brew install libpcap                        # macOS
 ```sh
 cd src
 make
+make test      # book unit tests on hand-built events; no capture needed
 ```
 
 Four binaries land in `src/`:
@@ -104,6 +109,29 @@ exchange      2000000      749.853      374.9      2667190     -105738789
 `null` stores nothing and is the floor — subtract it and what is left is what the data
 structure actually costs. `--list` shows the registered books, `--books=naive,exchange`
 selects some, `--reps=N` sets repetitions (best is reported).
+
+The table above is one unpinned run. The saved reports in `src/logs/` were pinned to a
+P-core (`taskset -c 2`), best of two repetitions. Under those conditions naive comes in at
+170 ns/event and exchange at 240 ns/event, and the two reports agree within 0.5%.
+
+`--latency` times every `apply()` with `rdtscp` into preallocated histograms. From
+`src/logs/report_0001.txt`, 2M events, ns per message:
+
+```
+book       kind        p50     p90     p99   p99.9
+--------   -------   -----   -----   -----   -----
+null       all           8       8       9       9
+naive      add         108     176    1088    2176
+naive      delete       92     160    1024    2176
+naive      all         100     168    1024    2176
+exchange   add         136     288    1216    2304
+exchange   all         120     256    1152    2304
+```
+
+`null` is the timer's own cost. The max column (not shown) reaches tens of milliseconds on
+a few adds. The likely causes are hash map rehashing and first-touch page faults. Neither
+has been confirmed yet; pre-reserving is the next experiment. Those runs used the powersave governor with turbo on, so read the tails as
+indicative rather than tuned.
 
 The `exchange` row is slower than `naive` because its `apply()` does strictly more work:
 every add is offered up for matching before it rests. Timings jitter ~10% run to run on an
@@ -291,6 +319,7 @@ different finding from one that decayed steadily. `price` is agreement on best b
 | It stays correct without a safety net | `--drift` — 99,122 / 99,123 with no resync, one divergence in 51M messages |
 | No shares are created or destroyed | conservation identity over 6,996,617,788 submitted shares |
 | Message layouts are right | derived from the bytes, then checked field by field against IEX DEEP+ Specification v1.04 — every offset, length and flag matched |
+| Book rules hold in isolation | `make test`: price-time priority, modify priority, partial fills, cancels, clears, and a non-mutating `match()`, run against both books in CI, including under ASan/UBSan |
 | Gap detection works | the real captures are clean, so `make_gap_fixture` builds a file with known holes and the reader is asserted to find exactly them |
 
 ## Limitations, stated plainly
@@ -380,7 +409,3 @@ data/          downloaded captures (gitignored)
 `src/books/book.h` is the place to start reading. It is the twelve-method contract, written
 out as declarations with the reasoning for each, and it is checked against every book at
 compile time — a book missing a method fails the build naming the method.
-
-## License
-
-Not yet specified.

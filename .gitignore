@@ -4,3 +4,11 @@ data/
 *.pcap.gz
 *.part
 __pycache__/
+
+#Build output
+*.o
+src/bookbench
+src/dpls_dump
+src/make_gap_fixture
+src/matchcheck
+src/tests/test_books
